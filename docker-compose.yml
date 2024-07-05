@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - keycloak-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      DB_VENDOR: postgres
+      DB_ADDR: postgres
+      DB_DATABASE: ${POSTGRES_DB}
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${KEYCLOAK_PORT}:8080"
+    depends_on:
+      - postgres
+    command:
+      - start-dev
+    volumes:
+      - type: volume
+        source: keycloak-volume
+        target: /opt/keycloak/data/
+    networks:
+      - keycloak-network
+
+  fastapi:
+    build: ./keycloak_fastapi
+    ports:
+      - "${FASTAPI_PORT}:5000"
+    environment:
+      DB_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres/${POSTGRES_DB}
+      AUTH_SERVER_URL: http://keycloak:8080
+      AUTH_REALM_NAME: keyauth
+      AUTH_KEYCLOAK_CLIENT_ID: open_id_client
+      AUTH_KEYCLOAK_CLIENT_SECRET: RxkUuxVB3FM2UYilPh6VN5GJvqOcoMEL
+    depends_on:
+      - keycloak
+      - postgres
+    volumes:
+      - ./keycloak_fastapi:/app
+    networks:
+      - keycloak-network
+    develop:
+      watch:
+        - path: ./keycloak_fastapi
+          target: /app
+          action: sync+restart
+
+volumes:
+  postgres_data:
+  keycloak-volume:
+
+networks:
+  keycloak-network:
+    driver: bridge
